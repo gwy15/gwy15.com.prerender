@@ -15,7 +15,7 @@ ROUTES = [
     ['/blog/', 'blog/index'],
     # ...
 ]
-OUTPUT_PATH = Path('prerender')
+OUTPUT_PATH = Path('output')
 USER_AGENT = 'gwy15-prerenderer'
 OPTIONS = {
     'headless': True,
@@ -94,8 +94,8 @@ async def generate_prerender_pages():
 
 
 async def main():
-    shutil.rmtree(str(OUTPUT_PATH), ignore_errors=True)
-    OUTPUT_PATH.mkdir(exist_ok=True)
+    # shutil.rmtree(str(OUTPUT_PATH), ignore_errors=True)
+    # OUTPUT_PATH.mkdir(exist_ok=True)
     #
     await extend_routes(ROUTES)
 

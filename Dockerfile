@@ -25,6 +25,7 @@ COPY --from=chrome-downloader /tmp/chrome/ \
 # setup sandbox and add user
 RUN groupadd -r pptruser \
     && useradd -r -g pptruser -G audio,video pptruser \
+    && mkdir /home/pptruser/output \
     && chown -R pptruser:pptruser /home/pptruser \
     && chmod -R 775 /home/pptruser
 # install py dependencies

@@ -1,9 +1,12 @@
 #! /bin/bash
+set -e
 cd "${0%/*}"
-mkdir -p output
-chmod -R 777 output
+# clear output directory
+rm    -rf output && mkdir -p output
+# change permissions
+chown -R 999:999    output && chmod -R 775  output
 docker run -it --rm --init --cap-add=SYS_ADMIN \
-    -v /tmp/prerender/output:/home/pptruser/prerender:rw \
+    -v `pwd`/output:/home/pptruser/output \
     prerenderer
-chmod -R 775        output/*
-chown -R 1000:10000 output/*
+# hand over permission to main user
+chown -R 1000:1000  output && chmod -R 775  output
