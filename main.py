@@ -54,7 +54,7 @@ class PageTask:
 
     @property
     def file(self) -> Path:
-        return OUTPUT_PATH / self.name
+        return OUTPUT_PATH / (self.name + '.html')
 
     @property
     def lastmod(self):
@@ -71,7 +71,7 @@ class TaskFactory:
     @staticmethod
     async def generate_tasks() -> Generator[PageTask, None, None]:
         # /
-        yield PageTask(path='/', name='index.html', page_last_modified=time())
+        yield PageTask(path='/', name='index', page_last_modified=time())
 
         # blogs
         async for task in TaskFactory.generate_blog_tasks():
@@ -84,7 +84,7 @@ class TaskFactory:
             posts = await resp.json()
         # /blog/
         yield PageTask(
-            path='/blog/', name='blog/index.html',
+            path='/blog', name='blog',
             page_last_modified=max(
                 post['content']['modified'] for post in posts))
         # /blog/:title
@@ -143,7 +143,7 @@ class Prerenderer:
             await asyncio.sleep(0.5)
 
             content = await page.content()
-            await self.save(content, task.name)
+            await self.save(content, task.name + '.html')
             print(f'Page {task.name} generated.')
             # await page.close()
         if browser is not None:
