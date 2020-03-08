@@ -33,31 +33,25 @@ class PageTask:
     def need_update(self, force: bool) -> bool:
         if force:
             return True
-        path = OUTPUT_PATH / self.name
-        if not path.exists():
+
+        if not self.file.exists():
             return True
-        return self.page_last_modified > path.stat().st_mtime
+
+        return self.page_last_modified > self.file.stat().st_mtime
 
     @property
     def url(self):
         return PAGE_URL + quote(self.path)
 
     @property
-    def lastmod_str(self):
-        path = OUTPUT_PATH / self.name
-        if path.exists():
-            # 预渲染文件时间
-            file_last_mod = datetime.datetime.fromtimestamp(
-                path.stat().st_mtime)
-            # 源文件修改时间
-            source_last_mod = datetime.datetime.fromtimestamp(
-                self.page_last_modified)
-            t = max(file_last_mod, source_last_mod)
-        else:
-            # 预渲染时间为今天的时间
-            t = datetime.date.today()
+    def file(self) -> Path:
+        return OUTPUT_PATH / self.name
 
-        return t.strftime('%Y-%m-%d')
+    @property
+    def lastmod(self):
+        assert self.file.exists()
+        t = self.file.stat().st_mtime
+        return datetime.datetime.fromtimestamp(t)
 
     def __repr__(self):
         t = datetime.datetime.fromtimestamp(self.page_last_modified)
@@ -98,12 +92,12 @@ class Prerenderer:
         async for task in TaskFactory.generate_tasks():
             tasks.append(task)
 
+        # prerender
+        await self.generate_prerender_pages(tasks, force)
+
         # generate sitemap
         await self.generate_sitemaps(tasks)
         print('Sitemap generated.')
-
-        # prerender
-        await self.generate_prerender_pages(tasks, force)
 
     async def save(self, content: str, name: str):
         """Write content to file"""
@@ -127,7 +121,7 @@ class Prerenderer:
         xml_urls = '\n'.join(
             XML_URL_TEMPLATE.format(
                 url=task.url,
-                date=task.lastmod_str)
+                date=task.lastmod.strftime('%Y-%m-%d'))
             for task in tasks)
         xml_sitemap = XML_TEMPLATE.format(xml_urls)
         await self.save(xml_sitemap, 'sitemap.xml')
@@ -136,11 +130,13 @@ class Prerenderer:
         await self.save(plaintext, 'sitemap.txt')
 
     async def generate_prerender_pages(self, tasks: List[PageTask], force: bool) -> None:
-        browser = await launch(OPTIONS)
+        browser = None  # lazy ignition
 
         for task in tasks:
             if not task.need_update(force):
                 continue
+            if browser is None:
+                browser = await launch(OPTIONS)
             page = await browser.newPage()
             print(f'Generating {task}...')
             await page.goto(task.url)
@@ -150,12 +146,13 @@ class Prerenderer:
             await self.save(content, task.name)
             print(f'Page {task.name} generated.')
             # await page.close()
-        await asyncio.sleep(1)
-        await browser.close()
+        if browser is not None:
+            await asyncio.sleep(1)
+            await browser.close()
 
 
 @click.command()
-@click.option('--force', is_flag=True, help='Force regenerate all pages')
+@click.option('--force', '-F', is_flag=True, help='Force regenerate all pages')
 def run(force: bool):
     asyncio.run(Prerenderer().run(force))
 
