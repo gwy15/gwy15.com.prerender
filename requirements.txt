@@ -1,2 +1,3 @@
 aiohttp==3.6.2
 pyppeteer==0.0.25
+click
