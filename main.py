@@ -1,5 +1,4 @@
 from pathlib import Path
-import shutil
 import asyncio
 import datetime
 from time import time
@@ -9,7 +8,6 @@ from typing import List, Generator
 
 import click
 import aiohttp
-import pyppeteer
 from pyppeteer import launch
 
 PAGE_URL = 'https://gwy15.com'
@@ -22,6 +20,17 @@ OPTIONS = {
         '--user-agent=gwy15-prerenderer'
     ]
 }
+XML_TEMPLATE = """<?xml version="1.0" encoding="UTF-8" ?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+{}
+</urlset>"""
+XML_URL_TEMPLATE = """
+    <url>
+        <loc>{url}</loc>
+        <lastmod>{date}</lastmod>
+        <changefreq>daily</changefreq>
+    </url>
+"""
 
 
 @dataclass
@@ -76,7 +85,8 @@ class TaskFactory:
         # /blog/
         yield PageTask(
             path='/blog/', name='blog/index.html',
-            page_last_modified=max(post['content']['modified'] for post in posts))
+            page_last_modified=max(
+                post['content']['modified'] for post in posts))
         # /blog/:title
         for post in posts:
             title = post['title']
@@ -107,17 +117,6 @@ class Prerenderer:
             f.write(content)
 
     async def generate_sitemaps(self, tasks: List[PageTask]) -> None:
-        XML_TEMPLATE = """<?xml version="1.0" encoding="UTF-8" ?>
-        <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-        {}
-        </urlset>"""
-        XML_URL_TEMPLATE = """
-        <url>
-            <loc>{url}</loc>
-            <lastmod>{date}</lastmod>
-            <changefreq>daily</changefreq>
-        </url>"""
-
         xml_urls = '\n'.join(
             XML_URL_TEMPLATE.format(
                 url=task.url,
@@ -129,7 +128,8 @@ class Prerenderer:
         plaintext = '\n'.join(task.url for task in tasks)
         await self.save(plaintext, 'sitemap.txt')
 
-    async def generate_prerender_pages(self, tasks: List[PageTask], force: bool) -> None:
+    async def generate_prerender_pages(
+            self, tasks: List[PageTask], force: bool) -> None:
         browser = None  # lazy ignition
 
         for task in tasks:
