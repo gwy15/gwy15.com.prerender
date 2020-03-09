@@ -1,10 +1,10 @@
 from pathlib import Path
 import asyncio
 import datetime
-from time import time
+from datetime import timezone as tz
 from urllib.parse import quote
 from dataclasses import dataclass
-from typing import List, Generator
+from typing import List, Generator, Union
 
 import click
 import aiohttp
@@ -23,12 +23,13 @@ OPTIONS = {
 XML_TEMPLATE = """<?xml version="1.0" encoding="UTF-8" ?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
 {}
-</urlset>"""
+</urlset>
+"""
 XML_URL_TEMPLATE = """
     <url>
         <loc>{url}</loc>
-        <lastmod>{date}</lastmod>
-        <changefreq>daily</changefreq>
+        <lastmod>{lastmod}</lastmod>
+        <changefreq>hourly</changefreq>
     </url>
 """
 
@@ -60,19 +61,18 @@ class PageTask:
     def lastmod(self):
         assert self.file.exists()
         t = self.file.stat().st_mtime
-        return datetime.datetime.fromtimestamp(t)
+        return datetime.datetime.fromtimestamp(
+            t, tz.utc).replace(microsecond=0)
 
     def __repr__(self):
-        t = datetime.datetime.fromtimestamp(self.page_last_modified)
-        return f'<Task {self.name} lastmod={t.strftime("%Y-%m-%d %H:%M:%S")}>'
+        t = datetime.datetime.fromtimestamp(
+            self.page_last_modified, tz.utc).replace(microsecond=0)
+        return f'<Task {self.path} lastmod={t.isoformat()}>'
 
 
 class TaskFactory:
     @staticmethod
     async def generate_tasks() -> Generator[PageTask, None, None]:
-        # /
-        yield PageTask(path='/', name='index', page_last_modified=time())
-
         # blogs
         async for task in TaskFactory.generate_blog_tasks():
             yield task
@@ -82,11 +82,17 @@ class TaskFactory:
         blog_api_url = API_URL + '/blog/post'
         async with aiohttp.request('GET', blog_api_url) as resp:
             posts = await resp.json()
-        # /blog/
+        latest_change = max(post['content']['modified'] for post in posts)
+        # /
+        yield PageTask(
+            path='/', name='index',
+            page_last_modified=latest_change)
+
+        # /blog
         yield PageTask(
             path='/blog', name='blog',
-            page_last_modified=max(
-                post['content']['modified'] for post in posts))
+            page_last_modified=latest_change)
+
         # /blog/:title
         for post in posts:
             title = post['title']
@@ -109,18 +115,24 @@ class Prerenderer:
         await self.generate_sitemaps(tasks)
         print('Sitemap generated.')
 
-    async def save(self, content: str, name: str):
+        # wait for graceful shutdown on Windows, related to
+        # https://github.com/aio-libs/aiohttp/issues/4324
+        await asyncio.sleep(1)
+
+    async def save(self, content: str, path: Union[Path, str]):
         """Write content to file"""
-        path = OUTPUT_PATH / name
+        if isinstance(path, str):
+            path = OUTPUT_PATH / path
+        path: Path
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open('w', encoding='utf8') as f:
             f.write(content)
 
     async def generate_sitemaps(self, tasks: List[PageTask]) -> None:
-        xml_urls = '\n'.join(
+        xml_urls = ''.join(
             XML_URL_TEMPLATE.format(
                 url=task.url,
-                date=task.lastmod.strftime('%Y-%m-%d'))
+                lastmod=task.lastmod.isoformat())
             for task in tasks)
         xml_sitemap = XML_TEMPLATE.format(xml_urls)
         await self.save(xml_sitemap, 'sitemap.xml')
@@ -136,6 +148,7 @@ class Prerenderer:
             if not task.need_update(force):
                 continue
             if browser is None:
+                print('Starting headless browser')
                 browser = await launch(OPTIONS)
             page = await browser.newPage()
             print(f'Generating {task}...')
@@ -143,7 +156,7 @@ class Prerenderer:
             await asyncio.sleep(0.5)
 
             content = await page.content()
-            await self.save(content, task.name + '.html')
+            await self.save(content, task.file)
             print(f'Page {task.name} generated.')
             # await page.close()
         if browser is not None:
