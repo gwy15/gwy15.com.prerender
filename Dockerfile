@@ -36,5 +36,5 @@ RUN pip install -i https://pypi.tuna.tsinghua.edu.cn/simple/ -r requirements.txt
 USER pptruser
 COPY main.py main.py
 
-CMD [ "python", "main.py" ]
-# CMD ["bash"]
+ENTRYPOINT [ "python", "main.py" ]
+
