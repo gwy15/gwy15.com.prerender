@@ -95,7 +95,7 @@ class TaskFactory:
 
         # /blog/:title
         for post in posts:
-            title = post['title']
+            title = post['title'].replace(' ', '-')
             yield PageTask(
                 path=f'/blog/{title}',
                 name=f'blog/{title}',
