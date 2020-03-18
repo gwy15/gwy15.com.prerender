@@ -1,6 +1,8 @@
 from pathlib import Path
 import asyncio
 import datetime
+import time
+from typing import List
 from datetime import timezone as tz
 from urllib.parse import quote
 from dataclasses import dataclass
@@ -8,7 +10,7 @@ from typing import List, Generator, Union
 
 import click
 import aiohttp
-from pyppeteer import launch
+from pyppeteer import launch, launcher
 
 PAGE_URL = 'https://gwy15.com'
 API_URL = PAGE_URL + '/api'
@@ -39,6 +41,15 @@ class PageTask:
     path: str
     name: str
     page_last_modified: int
+
+    @staticmethod
+    def from_url(path: str):
+        assert path.startswith('/')
+        return PageTask(
+            path=path,
+            name=path.lstrip('/'),
+            page_last_modified=int(time.time())
+        )
 
     def need_update(self, force: bool) -> bool:
         if force:
@@ -73,13 +84,15 @@ class PageTask:
 class TaskFactory:
     @staticmethod
     async def generate_tasks() -> Generator[PageTask, None, None]:
+        yield PageTask.from_url('/privacy-policy')
+        yield PageTask.from_url('/terms-of-service')
         # blogs
         async for task in TaskFactory.generate_blog_tasks():
             yield task
 
     @staticmethod
     async def generate_blog_tasks() -> Generator[PageTask, None, None]:
-        blog_api_url = API_URL + '/blog/post'
+        blog_api_url = API_URL + '/blog/posts'
         async with aiohttp.request('GET', blog_api_url) as resp:
             posts = await resp.json()
         latest_change = max(post['content']['modified'] for post in posts)
@@ -129,6 +142,7 @@ class Prerenderer:
             f.write(content)
 
     async def generate_sitemaps(self, tasks: List[PageTask]) -> None:
+        print('generating sitemaps')
         xml_urls = ''.join(
             XML_URL_TEMPLATE.format(
                 url=task.url,
@@ -142,15 +156,27 @@ class Prerenderer:
 
     async def generate_prerender_pages(
             self, tasks: List[PageTask], force: bool) -> None:
-        browser = None  # lazy ignition
+        print('generating prerender pages')
+        browser: List[launcher.Browser] = []  # lazy ignition
 
+        try:
+            await self._run_generate_prerender_pages(browser, tasks, force)
+        finally:
+            if browser != []:
+                await asyncio.sleep(1)
+                print("killing browser")
+                await browser[0].close()
+            await asyncio.sleep(1)
+
+    async def _run_generate_prerender_pages(
+            self, browser: launcher.Browser, tasks: List[PageTask], force: bool) -> None:
         for task in tasks:
             if not task.need_update(force):
                 continue
-            if browser is None:
+            if browser == []:
                 print('Starting headless browser')
-                browser = await launch(OPTIONS)
-            page = await browser.newPage()
+                browser.append(await launch(OPTIONS))
+            page = await browser[0].newPage()
             print(f'Generating {task}...')
             await page.goto(task.url)
             await asyncio.sleep(0.5)
@@ -159,9 +185,6 @@ class Prerenderer:
             await self.save(content, task.file)
             print(f'Page {task.name} generated.')
             # await page.close()
-        if browser is not None:
-            await asyncio.sleep(1)
-            await browser.close()
 
 
 @click.command()
