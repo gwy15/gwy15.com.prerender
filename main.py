@@ -89,6 +89,9 @@ class TaskFactory:
         # blogs
         async for task in TaskFactory.generate_blog_tasks():
             yield task
+        # genshin
+        yield PageTask.from_url('/genshin/map')
+        yield PageTask.from_url('/genshin/sow')
 
     @staticmethod
     async def generate_blog_tasks() -> Generator[PageTask, None, None]:
