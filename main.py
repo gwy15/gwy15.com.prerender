@@ -17,6 +17,8 @@ PAGE_URL = 'https://gwy15.com'
 API_URL = PAGE_URL + '/api'
 
 OUTPUT_PATH = Path('output')
+
+
 def options(locale):
     return {
         'headless': True,
@@ -25,6 +27,8 @@ def options(locale):
             f'--lang={locale}'
         ]
     }
+
+
 XML_TEMPLATE = """<?xml version="1.0" encoding="UTF-8" ?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
 {}
@@ -52,7 +56,8 @@ class PageTask:
         return PageTask(
             path=path,
             name=path.lstrip('/'),
-            page_last_modified=int(time.time()),
+            # allow a 5-minute cache
+            page_last_modified=int(time.time()) - 5 * 60,
             locale=locale
         )
 
@@ -89,14 +94,14 @@ class PageTask:
 class TaskFactory:
     @staticmethod
     async def generate_tasks(locale) -> Generator[PageTask, None, None]:
-        yield PageTask.from_url('/privacy-policy', locale)
-        yield PageTask.from_url('/terms-of-service', locale)
         # blogs
         async for task in TaskFactory.generate_blog_tasks(locale):
             yield task
         # genshin
         # yield PageTask.from_url('/genshin/map')
         yield PageTask.from_url('/genshin/sow', locale)
+        yield PageTask.from_url('/privacy-policy', locale)
+        yield PageTask.from_url('/terms-of-service', locale)
 
     @staticmethod
     async def generate_blog_tasks(locale) -> Generator[PageTask, None, None]:
@@ -135,6 +140,7 @@ class Prerenderer:
         await asyncio.sleep(1)
 
     async def run_with_locale(self, locale: str, force: bool):
+        print(f"Generating with {locale=}")
         tasks = []
         async for task in TaskFactory().generate_tasks(locale):
             tasks.append(task)
@@ -157,6 +163,7 @@ class Prerenderer:
     async def get_browser(self, locale: str):
         print(f'starting browser with locale {locale}')
         browser = await launch(options(locale))
+        print(f"browser with {locale=} started.")
         return browser
 
     async def save(self, content: str, path: Path):
